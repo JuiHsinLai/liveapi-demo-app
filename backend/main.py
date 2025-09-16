@@ -3,6 +3,7 @@ import json
 import ssl      # LARRY <-- Import the ssl module
 import certifi  # LARRY <-- Import the certifi module
 
+import websockets.exceptions
 import websockets
 from websockets.legacy.protocol import WebSocketCommonProtocol
 from websockets.legacy.server import WebSocketServerProtocol
@@ -34,6 +35,13 @@ async def proxy_task(
                 print("proxying: ", data)
             await server_websocket.send(json.dumps(data))
         except Exception as e:
+            if isinstance(e, websockets.exceptions.ConnectionClosed):
+                print(f"Connection closed with code {e.code}: {e.reason}")
+                # Forward the close reason to the other websocket if it's still open
+                if not client_websocket.closed:
+                    await client_websocket.send(json.dumps({"error": {"message": f"Connection closed: {e.reason}"}}))
+                # Re-raise the exception to terminate the proxy_task
+                raise
             print(f"Error processing message: {e}")
 
     await server_websocket.close()

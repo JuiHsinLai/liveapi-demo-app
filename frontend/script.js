@@ -61,7 +61,11 @@ const videoInterval = document.getElementById("videoInterval");
 const geminiLiveApi = new GeminiLiveAPI(PROXY_URL, PROJECT_ID, MODEL, API_HOST);
 
 geminiLiveApi.onErrorMessage = (message) => {
-    showDialogWithMessage(message);
+    // The message from the backend might be JSON stringified.
+    // Or it could be a direct string from the onclose event.
+    let errorMessage = message;
+
+    showDialogWithMessage(errorMessage);
     setAppStatus("disconnected");
 };
 
@@ -123,9 +127,9 @@ function connectBtnClick() {
     geminiLiveApi.setTranscript(inputTranscript.checked, outputTranscript.checked);
     geminiLiveApi.setResumption(enableResumption.checked, resumptionHandle.value);
     geminiLiveApi.setVoice(voiceName.value, voiceLocale.value);
-    geminiLiveApi.setVad(disableInterruption.checked, 
+    geminiLiveApi.setVad(disableInterruption.checked,
         disableDetection.checked,
-        startSensitivity.value, 
+        startSensitivity.value,
         endSensitivity.value
     );
     geminiLiveApi.setCustomVoice(customVoiceBase64);
@@ -388,15 +392,15 @@ const voiceDropdown = document.getElementById('voice-dropdown');
 createVoiceBtn.addEventListener('click', openModal);
 closeModalBtn.addEventListener('click', closeModal);
 window.addEventListener('click', (event) => {
-  if (event.target === modal) {
-    closeModal();
-  }
+    if (event.target === modal) {
+        closeModal();
+    }
 });
 recordButton.addEventListener('click', handleRecordClick);
 
 // --- Functions ---
 function closeModal() {
-  modal.style.display = 'none';
+    modal.style.display = 'none';
 }
 
 // --- State for Recording ---
@@ -406,85 +410,85 @@ let isRecording = false;
 let recordingStartTime;
 
 async function handleRecordClick() {
-  const voiceName = newVoiceNameInput.value.trim();
-  if (voiceName === '') {
-    alert('Please enter a name for the reference voice.');
-    newVoiceNameInput.focus();
-    return;
-  }
-
-  if (isRecording) {
-    // Stop recording
-    const duration = (new Date() - recordingStartTime) / 1000;
-    if (duration < 10) {
-        alert('A recording of at least 10 seconds is required.');
-        // Don't stop, let user continue recording
+    const voiceName = newVoiceNameInput.value.trim();
+    if (voiceName === '') {
+        alert('Please enter a name for the reference voice.');
+        newVoiceNameInput.focus();
         return;
     }
 
-    mediaRecorder.stop();
-    recordButton.disabled = true;
-    recordStatus.textContent = 'Processing...';
-    processingSpinner.style.display = 'block';
-    recordButton.innerHTML = 'Processing...';
-    isRecording = false;
-  } else {
-    // Start recording
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Try to record as WAV, but fall back to browser default if not supported
-      const mimeType = MediaRecorder.isTypeSupported('audio/wav') ? 'audio/wav' : 'audio/webm';
-      mediaRecorder = new MediaRecorder(stream, { mimeType });
+    if (isRecording) {
+        // Stop recording
+        const duration = (new Date() - recordingStartTime) / 1000;
+        if (duration < 10) {
+            alert('A recording of at least 10 seconds is required.');
+            // Don't stop, let user continue recording
+            return;
+        }
 
-      mediaRecorder.ondataavailable = event => {
-        audioChunks.push(event.data);
-      };
+        mediaRecorder.stop();
+        recordButton.disabled = true;
+        recordStatus.textContent = 'Processing...';
+        processingSpinner.style.display = 'block';
+        recordButton.innerHTML = 'Processing...';
+        isRecording = false;
+    } else {
+        // Start recording
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Try to record as WAV, but fall back to browser default if not supported
+            const mimeType = MediaRecorder.isTypeSupported('audio/wav') ? 'audio/wav' : 'audio/webm';
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: mimeType });
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = () => {
-          const base64String = reader.result.split(',')[1];
-          
-          customVoiceBase64 = base64String;
-          if (geminiLiveApi) {
-            geminiLiveApi.setCustomVoice(base64String);
-          }
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
 
-          const newOption = document.createElement('option');
-          const optionValue = voiceName.toLowerCase().replace(/\s/g, '-');
-          newOption.value = optionValue;
-          newOption.textContent = voiceName;
-          newOption.selected = true;
-          voiceDropdown.appendChild(newOption);
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: mimeType });
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = () => {
+                    const base64String = reader.result.split(',')[1];
 
-          alert(`New branded voice "${voiceName}" has been created and selected!`);
-          closeModal();
-          audioChunks = [];
-        };
-      };
+                    customVoiceBase64 = base64String;
+                    if (geminiLiveApi) {
+                        geminiLiveApi.setCustomVoice(base64String);
+                    }
 
-      mediaRecorder.start();
-      recordingStartTime = new Date();
-      isRecording = true;
-      recordButton.innerHTML = '<span class="material-icons">stop</span> Stop Recording';
-      recordStatus.textContent = 'Recording... (10s minimum)';
+                    const newOption = document.createElement('option');
+                    const optionValue = voiceName.toLowerCase().replace(/\s/g, '-');
+                    newOption.value = optionValue;
+                    newOption.textContent = voiceName;
+                    newOption.selected = true;
+                    voiceDropdown.appendChild(newOption);
 
-    } catch (error) {
-      console.error('Error accessing microphone:', error);
-      alert('Could not access microphone. Please check permissions.');
+                    alert(`New branded voice "${voiceName}" has been created and selected!`);
+                    closeModal();
+                    audioChunks = [];
+                };
+            };
+
+            mediaRecorder.start();
+            recordingStartTime = new Date();
+            isRecording = true;
+            recordButton.innerHTML = '<span class="material-icons">stop</span> Stop Recording';
+            recordStatus.textContent = 'Recording... (10s minimum)';
+
+        } catch (error) {
+            console.error('Error accessing microphone:', error);
+            alert('Could not access microphone. Please check permissions.');
+        }
     }
-  }
 }
 
 function openModal() {
-  modal.style.display = 'flex';
-  newVoiceNameInput.value = '';
-  recordButton.disabled = false;
-  recordButton.innerHTML = '<span class="material-icons">mic</span> Record reference voice';
-  recordStatus.textContent = '';
-  processingSpinner.style.display = 'none';
-  isRecording = false;
-  audioChunks = [];
+    modal.style.display = 'flex';
+    newVoiceNameInput.value = '';
+    recordButton.disabled = false;
+    recordButton.innerHTML = '<span class="material-icons">mic</span> Record reference voice';
+    recordStatus.textContent = '';
+    processingSpinner.style.display = 'none';
+    isRecording = false;
+    audioChunks = [];
 }
