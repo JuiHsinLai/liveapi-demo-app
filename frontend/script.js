@@ -133,7 +133,17 @@ function getSystemInstructions() {
     return systemInstructionsInput.value;
 }
 
-function connectBtnClick() {
+async function connectBtnClick() {
+    // --- Start of new recording logic ---
+    multimodalityRecorder = new MultimodalityRecorder();
+
+    // Initialize the recorder with placeholder tracks.
+    // The recorder will internally handle a null stream by using silence.
+    multimodalityRecorder.processClientAudio(null);
+    // The recorder will internally add a black video track if none exists on start.
+    multimodalityRecorder.start();
+    // --- End of new recording logic ---
+
     setAppStatus("connecting");
     console.log("Connecting...");
 
@@ -174,12 +184,17 @@ function connectBtnClick() {
         cameraOffBtn.querySelector('md-filled-icon-button').disabled = false;
         screenBtn.querySelector('md-filled-icon-button').disabled = false;
         setAppStatus("connected");
-
-        // startAudioInput();
     };
 }
 
 const liveAudioOutputManager = new LiveAudioOutputManager();
+let multimodalityRecorder = null;
+
+liveAudioOutputManager.onNewServerAudioData = (data) => {
+    if (multimodalityRecorder) {
+        multimodalityRecorder.processServerAudio(data);
+    }
+};
 
 geminiLiveApi.onReceiveResponse = (messageResponse) => {
     console.log("Message response received, type: " + messageResponse.type);
@@ -286,13 +301,25 @@ function newUserMessage() {
     textMessage.value = "";
 }
 
-function startAudioInput() {
+async function startAudioInput() {
+    // Explicitly disconnect first to ensure a clean state.
+    liveAudioInputManager.disconnectMicrophone();
+    // Update the interval property before connecting.
     liveAudioInputManager.updateAudioInterval(audioInterval.value);
-    // liveAudioInputManager.connectMicrophone();
+    // Connect and get the new stream.
+    const newStream = await liveAudioInputManager.connectMicrophone();
+    if (multimodalityRecorder && newStream) {
+        console.log("Switching recording to new microphone stream.");
+        multimodalityRecorder.processClientAudio(newStream);
+    }
 }
 
 function stopAudioInput() {
     liveAudioInputManager.disconnectMicrophone();
+    if (multimodalityRecorder) {
+        console.log("Switching recording to silent client audio track.");
+        multimodalityRecorder.processClientAudio(null);
+    }
 }
 
 function micBtnClick() {
@@ -335,16 +362,28 @@ liveScreenManager.onNewFrame = (b64Image) => {
     geminiLiveApi.sendImageMessage(b64Image);
 };
 
-function startCameraCapture() {
+async function startCameraCapture() {
     liveScreenManager.stopCapture();
-    liveVideoManager.updateVideoInterval(videoInterval.value);
-    // liveVideoManager.startWebcam();
+    const newStream = await liveVideoManager.startWebcam();
+    if (newStream) {
+        videoElement.srcObject = newStream; // Update the preview
+        if (multimodalityRecorder) {
+            console.log("Setting recorder video source to camera.");
+            multimodalityRecorder.setVideoSource(videoElement);
+        }
+    }
 }
 
-function startScreenCapture() {
+async function startScreenCapture() {
     liveVideoManager.stopWebcam();
-    liveScreenManager.updateVideoInterval(videoInterval.value);
-    // liveScreenManager.startCapture();
+    const newStream = await liveScreenManager.startCapture();
+    if (newStream) {
+        videoElement.srcObject = newStream; // Update the preview
+        if (multimodalityRecorder) {
+            console.log("Setting recorder video source to screen share.");
+            multimodalityRecorder.setVideoSource(videoElement);
+        }
+    }
 }
 
 function cameraBtnClick() {
@@ -352,6 +391,11 @@ function cameraBtnClick() {
     cameraBtn.hidden = true;
     cameraOffBtn.hidden = false;
     console.log("Camera turned off");
+
+    if (multimodalityRecorder) {
+        console.log("Setting recorder video source to null (black screen).");
+        multimodalityRecorder.setVideoSource(null);
+    }
 }
 
 function cameraOffBtnClick() {
@@ -377,6 +421,11 @@ function newMicSelected() {
 }
 
 function disconnectBtnClick() {
+    if (multimodalityRecorder) {
+        multimodalityRecorder.stop();
+        multimodalityRecorder = null;
+    }
+
     geminiLiveApi.disconnect();
     stopAudioInput();
     customVoiceBase64 = "";
