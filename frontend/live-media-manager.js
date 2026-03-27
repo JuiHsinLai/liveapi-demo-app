@@ -1,3 +1,28 @@
+class PlaceholderMediaFactory {
+    static getSilentAudioStream() {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        const destination = audioContext.createMediaStreamDestination();
+        oscillator.connect(gainNode);
+        gainNode.connect(destination);
+        oscillator.start();
+        return destination.stream;
+    }
+
+    static getBlackVideoStream() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const stream = canvas.captureStream();
+        return stream;
+    }
+}
+
 class LiveAudioOutputManager {
     constructor() {
         this.audioInputContext;
@@ -6,6 +31,8 @@ class LiveAudioOutputManager {
 
         this.audioQueue = [];
         this.isPlaying = false;
+
+        this.onNewServerAudioData = (data) => {};
 
         this.initializeAudioContext();
     }
@@ -25,6 +52,7 @@ class LiveAudioOutputManager {
             const float32Data =
                 LiveAudioOutputManager.convertPCM16LEToFloat32(arrayBuffer);
 
+            this.onNewServerAudioData(float32Data);
             this.workletNode.port.postMessage(float32Data);
         } catch (error) {
             console.error("Error processing audio chunk:", error);
@@ -87,51 +115,52 @@ class LiveAudioInputManager {
     }
 
     // Update the audio interval in milliseconds (based on user input)
-    async updateAudioInterval(interval) {
+    updateAudioInterval(interval) {
         this.intervalMs = parseInt(interval, 10);
-        this.disconnectMicrophone();
-        this.connectMicrophone();
     }
 
     async connectMicrophone() {
-        this.audioContext = new AudioContext({
-            sampleRate: 16000,
-        });
-
-        let constraints = {
-            audio: {
-                channelCount: 1,
+        try {
+            this.audioContext = new AudioContext({
                 sampleRate: 16000,
-            },
-        };
+            });
 
-        if (this.deviceId) {
-            constraints.audio.deviceId = { exact: this.deviceId };
+            let constraints = {
+                audio: {
+                    channelCount: 1,
+                    sampleRate: 16000,
+                },
+            };
+
+            if (this.deviceId) {
+                constraints.audio.deviceId = { exact: this.deviceId };
+            }
+
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            const source = this.audioContext.createMediaStreamSource(this.stream);
+            await this.audioContext.audioWorklet.addModule("frontend/input-processor.js");;
+
+            this.processor = new AudioWorkletNode(
+                this.audioContext,
+                "input-processor"
+            );
+
+            this.processor.port.onmessage = (event) => {
+                this.pcmData.push(...event.data);
+            };
+
+            source.connect(this.processor);
+
+            this.interval = setInterval(
+                this.recordChunk.bind(this),
+                this.intervalMs
+            );
+            return this.stream; // Return the stream on success
+        } catch (error) {
+            console.error("Error connecting microphone:", error);
+            return null; // Return null on failure
         }
-
-        this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-        const source = this.audioContext.createMediaStreamSource(this.stream);
-        await this.audioContext.audioWorklet.addModule("frontend/input-processor.js");;
-
-        // Create an AudioWorkletNode.
-        this.processor = new AudioWorkletNode(
-            this.audioContext,
-            "input-processor"
-        );
-
-        // Listen for messages (the PCM data) from the worklet.
-        this.processor.port.onmessage = (event) => {
-            this.pcmData.push(...event.data);
-        };
-
-        // Connect the microphone source to the worklet.
-        source.connect(this.processor);
-
-        this.interval = setInterval(
-            this.recordChunk.bind(this),
-            this.intervalMs
-        );
     }
 
     newAudioRecording(b64AudioData) {
@@ -203,13 +232,12 @@ class LiveVideoManager {
 
     async updateVideoInterval(interval) {
         this.intervalMs = parseInt(interval, 10);
-        this.stopWebcam();
-        this.startWebCam();
     }
 
     async startWebcam() {
         if (this.stream) {
-            return; // Already started
+            // If a stream already exists, stop it before creating a new one.
+            this.stopWebcam();
         }
         try {
             const constraints = {
@@ -218,10 +246,6 @@ class LiveVideoManager {
                         ? { exact: this.deviceId }
                         : undefined,
                 },
-                // video: {
-                //     width: { max: 640 },
-                //     height: { max: 480 },
-                // },
             };
             this.stream = await navigator.mediaDevices.getUserMedia(
                 constraints
@@ -230,8 +254,10 @@ class LiveVideoManager {
             this.interval = setInterval(() => {
                 this.newFrame();
             }, this.intervalMs);
+            return this.stream; // Return the stream on success
         } catch (err) {
             console.error("Error accessing the webcam: ", err);
+            return null; // Return null on failure
         }
     }
 
@@ -306,10 +332,10 @@ class LiveScreenManager {
         };
     }
 
-    updateVideoInterval(interval) {
+    async updateVideoInterval(interval) {
         this.intervalMs = parseInt(interval, 10);
         this.stopCapture();
-        this.startCapture();
+        await this.startCapture();
     }
 
     async startCapture() {
@@ -326,8 +352,10 @@ class LiveScreenManager {
                 this.newFrame.bind(this),
                 this.intervalMs
             );
+            return this.stream; // Return the stream on success
         } catch (err) {
-            console.error("Error accessing the webcam: ", err);
+            console.error("Error accessing the screen: ", err);
+            return null; // Return null on failure
         }
     }
 
