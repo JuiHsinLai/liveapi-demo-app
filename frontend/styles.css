@@ -157,7 +157,7 @@ details .details-content {
 
 #video, #avatar-output {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 3 / 4;
   border-radius: 8px;
   background-color: #000;
   object-fit: cover;

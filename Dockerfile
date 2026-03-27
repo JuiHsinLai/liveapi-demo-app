@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # This copies everything from your local liveapi-demo-app into /app
 COPY . .
 
-ENV PROJECT_ID "visionai-testing-stable"
+ENV PROJECT_ID "cloud-llm-preview1"
 ENV LOCATION "us-central1"
 
 
@@ -21,4 +21,4 @@ ENV LOCATION "us-central1"
 WORKDIR /app/backend
 
 # Use the PORT environment variable provided by Cloud Run
-CMD python main.py --project_id=$PROJECT_ID
+CMD python main.py --project_id=${PROJECT_ID}

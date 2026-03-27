@@ -167,6 +167,8 @@ function connectBtnClick() {
     );
     geminiLiveApi.setLocation(locationInput.value);
     geminiLiveApi.setApiHost(envApiHost.value);
+    const avatarModeCheckbox = document.getElementById("enableAvatarMode");
+    geminiLiveApi.avatarMode = avatarModeCheckbox.checked;
 
     geminiLiveApi.connect();
 

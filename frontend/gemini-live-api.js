@@ -2,25 +2,29 @@ class GeminiLiveResponseMessage {
     constructor(data) {
         this.data = "";
         this.type = "";
-        this.endOfTurn = data?.serverContent?.turnComplete;
-        this.interrupt = data?.serverContent?.interrupted;
 
-        const parts = data?.serverContent?.modelTurn?.parts;
-        const tool_calls = data?.toolCall?.functionCalls;
+        const serverContent = data?.serverContent || data?.server_content;
+        this.endOfTurn = serverContent?.turnComplete || serverContent?.turn_complete;
+        this.interrupt = serverContent?.interrupted;
 
-        if (data?.setupComplete) {
+        const modelTurn = serverContent?.modelTurn || serverContent?.model_turn;
+        const parts = modelTurn?.parts;
+        const tool_calls = data?.toolCall?.functionCalls || data?.tool_call?.function_calls;
+
+        if (data?.setupComplete || data?.setup_complete) {
             this.type = "SETUP COMPLETE";
         } else if (tool_calls) {
             this.data = tool_calls;
             this.type = "FUNCTION_CALL";
-        } else if (data?.voiceActivityDetectionSignal) {
+        } else if (data?.voiceActivityDetectionSignal || data?.voice_activity_detection_signal) {
             this.type = "VAD_SIGNAL";
         } else if (parts?.length && parts[0].text) {
             this.data = parts[0].text;
             this.type = "TEXT";
-        } else if (parts?.length && parts[0].inlineData) {
-            this.data = parts[0].inlineData.data;
-            const mimeType = parts[0].inlineData.mimeType;
+        } else if (parts?.length && (parts[0].inlineData || parts[0].inline_data)) {
+            const inlineData = parts[0].inlineData || parts[0].inline_data;
+            this.data = inlineData.data;
+            const mimeType = inlineData.mimeType || inlineData.mime_type;
             if (
                 mimeType &&
                 (mimeType.startsWith("video/") || mimeType.startsWith("image/"))
@@ -30,24 +34,25 @@ class GeminiLiveResponseMessage {
             } else {
                 this.type = "AUDIO";
             }
-        } else if (data?.sessionResumptionUpdate) {
+        } else if (data?.sessionResumptionUpdate || data?.session_resumption_update) {
             this.type = "RESUMPTION";
-            this.data = data?.sessionResumptionUpdate?.newHandle;
-        } else if (data?.serverContent?.inputTranscription) {
+            const sessionResumptionUpdate = data?.sessionResumptionUpdate || data?.session_resumption_update;
+            this.data = sessionResumptionUpdate?.newHandle || sessionResumptionUpdate?.new_handle;
+        } else if (serverContent?.inputTranscription || serverContent?.input_transcription) {
             this.type = "INPUT_TRANSCRIPTION";
-            if (data?.serverContent?.inputTranscription?.text) {
-                this.data = data?.serverContent?.inputTranscription?.text;
-            } else if (data?.serverContent?.inputTranscription?.finished) {
-                this.data = data?.serverContent?.inputTranscription?.finished;
+            const inputTranscription = serverContent?.inputTranscription || serverContent?.input_transcription;
+            if (inputTranscription?.text) {
+                this.data = inputTranscription?.text;
+            } else if (inputTranscription?.finished) {
+                this.data = inputTranscription?.finished;
             }
-        } else if (data?.serverContent?.outputTranscription) {
+        } else if (serverContent?.outputTranscription || serverContent?.output_transcription) {
             this.type = "OUTPUT_TRANSCRIPTION";
-            if (data?.serverContent?.outputTranscription?.text) {
-                this.data = data?.serverContent?.outputTranscription?.text;
-            } else if (data?.serverContent?.outputTranscription?.finished) {
-                this.data =
-                    "Finished: " +
-                    data?.serverContent?.outputTranscription?.finished;
+            const outputTranscription = serverContent?.outputTranscription || serverContent?.output_transcription;
+            if (outputTranscription?.text) {
+                this.data = outputTranscription?.text;
+            } else if (outputTranscription?.finished) {
+                this.data = "Finished: " + outputTranscription?.finished;
             }
         } else if (this.endOfTurn) {
             this.data = "END OF TURN";
@@ -58,6 +63,8 @@ class GeminiLiveResponseMessage {
         }
     }
 }
+const DUMMY_AVATAR_16_9 =
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAABnTYUvAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAMSURBVBhXYwQDAAACAAHnSm8jAAAAAElFTkSuQmCC";
 
 class GeminiLiveAPI {
     constructor(proxyUrl, controlUrl, frUrl) {
@@ -71,7 +78,7 @@ class GeminiLiveAPI {
 
         this.environment = "prod";
 
-        this.responseModalities = ["AUDIO"];
+        this.responseModalities = ["VIDEO"];
         this.systemInstructions = "";
 
         this.endPoint = null;
@@ -90,6 +97,7 @@ class GeminiLiveAPI {
 
         this.websocket = null;
         this.location = null;
+        this.avatarMode = false;
 
         this.enableInputTranscript = false;
         this.enableOutputTranscript = false;
@@ -106,6 +114,8 @@ class GeminiLiveAPI {
         this.enableS2ST = false;
         this.s2stTargetLanguage = "";
         this.functionCallDefinition = null;
+        this.customizedAvatarData = CUSTOM_AVATAR_DATA;
+        this.customizedAvatarMimeType = "image/png";
 
         console.log("Created Gemini Live API object: ", this);
     }
@@ -176,6 +186,11 @@ class GeminiLiveAPI {
         console.log(`Setting S2ST to: ${enable}, Target Language: ${language}`);
         this.enableS2ST = enable;
         this.s2stTargetLanguage = language;
+    }
+
+    setCustomizedAvatar(imageData, mimeType = "image/png") {
+        this.customizedAvatarData = imageData;
+        this.customizedAvatarMimeType = mimeType;
     }
 
     connect() {
@@ -291,34 +306,40 @@ class GeminiLiveAPI {
         const sessionSetupMessage = {
             setup: {
                 model: modelUri,
-                realtime_input_config: {},
-                explicit_vad_signal: true,
                 generation_config: {
                     response_modalities: this.responseModalities,
                     speech_config: {
                         voice_config: this.customVoiceSample
                             ? {
-                                  replicated_voice_config: {
-                                      voice_sample_audio:
+                                replicated_voice_config: {
+                                    voice_sample_audio:
                                           this.customVoiceSample,
-                                      mime_type: "audio/pcm;rate=24000",
+                                    mime_type: "audio/pcm;rate=24000",
                                   },
                               }
                             : {
-                                  prebuilt_voice_config: {
-                                      voice_name: this.voiceName,
+                                prebuilt_voice_config: {
+                                    voice_name: this.voiceName,
                                   },
                               },
                         language_code: this.voiceLocale,
                     },
                 },
+                avatar_config: {
+                    customized_avatar: {
+                        image_mime_type: this.customizedAvatarMimeType,
+                        image_data: this.customizedAvatarData,
+                    },
+                },
             },
         };
+
         if (this.functionCallDefinition) {
             sessionSetupMessage.setup.tools = [
-                { functionDeclarations: this.functionCallDefinition },
+                { function_declarations: this.functionCallDefinition },
             ];
         }
+
         console.log(sessionSetupMessage);
 
         if (this.systemInstructions && this.systemInstructions.trim()) {
@@ -327,41 +348,38 @@ class GeminiLiveAPI {
             };
         }
 
-        if (this.enableInputTranscript) {
-            sessionSetupMessage.setup.input_audio_transcription = {};
-        }
-        if (this.enableOutputTranscript) {
-            sessionSetupMessage.setup.output_audio_transcription = {};
-        }
         if (this.enableSessionResumption) {
             sessionSetupMessage.setup.session_resumption = {
                 handle: this.resumptionHandle,
             };
         }
 
-        sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection =
-            {};
-        if (this.disableDetection) {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.disabled = true;
-        }
-        if (this.disableInterruption) {
-            sessionSetupMessage.setup.realtime_input_config.activity_handling = 2;
+        if (this.disableDetection || this.disableInterruption || this.startSensitivity !== "" || this.endSensitivity !== "") {
+            sessionSetupMessage.setup.realtime_input_config = {
+                automatic_activity_detection: {}
+            };
+            if (this.disableDetection) {
+                sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.disabled = true;
+            }
+            if (this.disableInterruption) {
+                sessionSetupMessage.setup.realtime_input_config.activity_handling = 2;
+            }
         }
 
         if (this.startSensitivity === "") {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.start_of_speech_sensitivity = 0;
+            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.start_of_speech_sensitivity = "START_SENSITIVITY_UNSPECIFIED";
         } else if (this.startSensitivity === "low") {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.start_of_speech_sensitivity = 2;
+            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.start_of_speech_sensitivity = "START_SENSITIVITY_LOW";
         } else if (this.startSensitivity === "high") {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.start_of_speech_sensitivity = 1;
+            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.start_of_speech_sensitivity = "START_SENSITIVITY_HIGH";
         }
 
         if (this.endSensitivity === "") {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.end_of_speech_sensitivity = 0;
+            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.end_of_speech_sensitivity = "END_SENSITIVITY_UNSPECIFIED";
         } else if (this.endSensitivity === "low") {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.end_of_speech_sensitivity = 2;
+            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.end_of_speech_sensitivity = "END_SENSITIVITY_LOW";
         } else if (this.endSensitivity === "high") {
-            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.end_of_speech_sensitivity = 1;
+            sessionSetupMessage.setup.realtime_input_config.automatic_activity_detection.end_of_speech_sensitivity = "START_SENSITIVITY_HIGH";
         }
 
         if (this.enableProactiveVideo) {
@@ -413,12 +431,12 @@ class GeminiLiveAPI {
         }
     }
 
-    sendRealtimeInputMessage(data, mime_type) {
+    sendRealtimeInputMessage(data, mimeType) {
         const message = {
             realtime_input: {
                 media_chunks: [
                     {
-                        mime_type: mime_type,
+                        mime_type: mimeType,
                         data: data,
                     },
                 ],
@@ -428,11 +446,19 @@ class GeminiLiveAPI {
     }
 
     sendAudioMessage(base64PCM) {
-        this.sendRealtimeInputMessage(base64PCM, "audio/pcm");
+        this.sendRealtimeInputMessage(base64PCM, "audio/pcm;rate=16000");
     }
 
     sendImageMessage(base64Image, mime_type = "image/jpeg") {
-        this.sendRealtimeInputMessage(base64Image, mime_type);
+        const message = {
+            realtime_input: {
+                video: {
+                    mime_type: mime_type,
+                    data: base64Image,
+                },
+            },
+        };
+        this.sendMessage(message);
     }
 
     async sendPostRequest(url, data) {

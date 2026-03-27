@@ -24,6 +24,7 @@
     document.adoptedStyleSheets.push(typescaleStyles.styleSheet);
   </script>
 
+  <script src="/frontend/avatar_data.js"></script>
   <script src="/frontend/gemini-live-api.js"></script>
   <script src="/frontend/live-media-manager.js"></script>
   <script src="/frontend/cookieJar.js"></script>
@@ -99,16 +100,19 @@
     /* --- Main Container Layout --- */
     /* --- Avatar Mode Layout --- */
     #video-preview-container .avatar-output-container {
-      display: none; /* Hidden by default */
+      display: none;
+      /* Hidden by default */
     }
 
     #video-preview-container.avatar-mode .avatar-output-container {
-      display: flex; /* Shown in avatar mode */
+      display: flex;
+      /* Shown in avatar mode */
     }
 
     #video-preview-container:not(.avatar-mode) .input-container {
       flex: 1;
-      max-width: 600px; /* Centered and bounded in default mode */
+      max-width: 600px;
+      /* Centered and bounded in default mode */
       margin: 0 auto;
     }
 
@@ -120,7 +124,7 @@
       justify-content: center;
     }
 
-    #video-preview-container > div {
+    #video-preview-container>div {
       flex: 1;
       min-width: 300px;
       background-color: #000;
@@ -139,9 +143,11 @@
       color: #ccc;
     }
 
-    video, #avatar-output {
+    video,
+    #avatar-output {
       width: 100%;
       max-width: 100%;
+      aspect-ratio: 3 / 4;
       border-radius: 4px;
       background-color: #222;
     }
@@ -445,15 +451,15 @@
       <div class="media-controls" style="margin-top: 16px;">
         <md-outlined-select id="cameraSource" label="Camera" onchange="newCameraSelected()"></md-outlined-select>
         <md-outlined-select id="audioSource" label="Microphone" onchange="newMicSelected()"></md-outlined-select>
-        <span id="micBtn" hidden><md-filled-icon-button 
+        <span id="micBtn" hidden><md-filled-icon-button
             onclick="micBtnClick()"><md-icon>mic</md-icon></md-filled-icon-button></span>
-        <span id="micOffBtn" ><md-filled-icon-button disabled
+        <span id="micOffBtn"><md-filled-icon-button disabled
             onclick="micOffBtnClick()"><md-icon>mic_off</md-icon></md-filled-icon-button></span>
-        <span id="cameraBtn" hidden><md-filled-icon-button 
+        <span id="cameraBtn" hidden><md-filled-icon-button
             onclick="cameraBtnClick()"><md-icon>videocam</md-icon></md-filled-icon-button></span>
-        <span id="cameraOffBtn" ><md-filled-icon-button disabled
+        <span id="cameraOffBtn"><md-filled-icon-button disabled
             onclick="cameraOffBtnClick()"><md-icon>videocam_off</md-icon></md-filled-icon-button></span>
-        <span id="screenBtn"><md-filled-icon-button  disabled
+        <span id="screenBtn"><md-filled-icon-button disabled
             onclick="screenShareBtnClick()"><md-icon>present_to_all</md-icon></md-filled-icon-button></span>
       </div>
 
@@ -484,14 +490,14 @@
           </md-select-option>
         </md-outlined-select>
         <md-outlined-select label="Model" id="liveApiModel">
-          <md-select-option value="gemini-live-2.0-flash-exp">
-            <div slot="headline">gemini-live-2.0-flash-exp</div>
-          </md-select-option>
-          <md-select-option value="gemini-2.0-flash-001">
-            <div slot="headline">gemini-2.0-flash-001</div>
-          </md-select-option>
-          <md-select-option selected value="gemini-live-2.5-flash-native-audio">
+          <md-select-option value="gemini-live-2.5-flash-native-audio">
             <div slot="headline">gemini-live-2.5-flash-native-audio</div>
+          </md-select-option>
+          <md-select-option value="gemini-3.1-flash-live-preview">
+            <div slot="headline">gemini-3.1-flash-live-preview</div>
+          </md-select-option>
+          <md-select-option selected value="gemini-live-3.0-flash-preview-native-audio-beyond">
+            <div slot="headline">gemini-live-3.0-flash-preview-native-audio-beyond</div>
           </md-select-option>
         </md-outlined-select>
         <div class="button-group">
@@ -508,7 +514,9 @@
           <p class="md-typescale-body-medium" style="margin-top: 0; margin-bottom: 16px;">Model response type
           </p>
           <form>
-            <md-radio id="audio-radio" name="responseModality" value="AUDIO" checked></md-radio>
+            <md-radio id="video-radio" name="responseModality" value="VIDEO" checked></md-radio>
+            <label for="video-radio">Video</label>
+            <md-radio id="audio-radio" name="responseModality" value="AUDIO" style="margin-left: 24px;"></md-radio>
             <label for="audio-radio">Audio</label>
             <md-radio id="text-radio" name="responseModality" value="TEXT" style="margin-left: 24px;"></md-radio>
             <label for="text-radio">Text</label>
